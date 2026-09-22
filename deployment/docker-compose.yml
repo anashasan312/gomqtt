@@ -1,0 +1,76 @@
+# GoMQTT local stack: the broker, Prometheus and Grafana.
+#
+#   docker compose -f deployment/docker-compose.yml up --build
+#
+#   mqtt        127.0.0.1:1883
+#   admin api   http://localhost:8080/api/v1/stats
+#   metrics     http://localhost:8080/metrics
+#   prometheus  http://localhost:9090
+#   grafana     http://localhost:3000   (admin / admin)
+
+name: gomqtt
+
+services:
+  gomqtt:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: gomqtt-broker
+    ports:
+      - "1883:1883"
+      - "8080:8080"
+    environment:
+      GOMQTT_ENV: docker
+      GOMQTT_LOG_LEVEL: info
+      GOMQTT_ADDRESS: ":1883"
+      GOMQTT_ADMIN_ADDRESS: ":8080"
+      GOMQTT_MAX_CONNECTIONS: "10000"
+      # Anonymous access is fine for a local demo stack. Set
+      # GOMQTT_ALLOW_ANONYMOUS=false and GOMQTT_USERS=user:pass for anything else.
+      GOMQTT_ALLOW_ANONYMOUS: "true"
+    restart: unless-stopped
+    healthcheck:
+      # The broker's own liveness endpoint, so compose knows the difference
+      # between "container started" and "broker is serving".
+      test: ["CMD", "/app/gomqtt", "-version"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: gomqtt-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    depends_on:
+      - gomqtt
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: gomqtt-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # The stack is a local demo; skipping the login page makes the dashboard
+      # one click from `up`. Never do this in a deployed environment.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

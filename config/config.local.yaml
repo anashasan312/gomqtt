@@ -1,0 +1,74 @@
+# GoMQTT — local development configuration.
+#
+# Every value here is also the built-in default, so this file documents the full
+# surface rather than overriding it. Secrets are deliberately absent: credentials
+# are supplied through GOMQTT_USERS, so they never live in a committed file.
+
+env: local
+
+broker:
+  name: gomqtt
+  version: 1.0.0
+  # 1883 is the IANA-assigned MQTT port.
+  address: ":1883"
+  # Caps concurrent clients. Every connection costs two goroutines, a read
+  # buffer and an outbound queue, so the cap is what makes the failure mode
+  # under a connection flood a refusal rather than the OOM killer.
+  max_connections: 10000
+  # How long a new socket has to send its CONNECT before it is dropped. This is
+  # what stops an idle-socket flood from costing one goroutine each.
+  connect_timeout: 10s
+  write_timeout: 10s
+  shutdown_timeout: 15s
+  # Packets that may await writing per client. The buffer absorbs a burst; it
+  # does not fix a client that is persistently slower than its traffic. At
+  # 10,000 clients, every slot here is 10,000 slots.
+  outbound_queue_size: 256
+  read_buffer_size: 4096
+
+admin:
+  # HTTP metrics and introspection, on a separate port from MQTT so a
+  # deployment can expose the broker to devices while keeping this internal.
+  enabled: true
+  address: ":8080"
+
+logger:
+  # debug | info | warn | error
+  level: info
+
+session:
+  # The QoS 1 flow-control window per client. It is a window in exactly the
+  # sense TCP means: without it, a subscriber that stops acknowledging still has
+  # messages queued at the full publish rate and the broker's memory becomes
+  # that one slow consumer's buffer.
+  max_inflight: 32
+  # Messages held for an offline client. When it is full the oldest is dropped,
+  # because for telemetry the newest reading is the one that matters.
+  max_queued: 1000
+  max_subscriptions: 512
+  # How often unacknowledged QoS 1 messages are resent to a still-connected
+  # client, and how long a message may go unacknowledged before that happens.
+  retransmit_interval: 5s
+  retransmit_timeout: 30s
+  # Queued messages drained per reconnect pass, so a client with a large backlog
+  # does not have all of it pushed into its socket at once.
+  resume_batch_size: 64
+
+limits:
+  # Bounds one inbound control packet. The protocol allows 256 MB; honouring
+  # that on an unauthenticated socket lets any client that can complete a TCP
+  # handshake demand a quarter-gigabyte allocation.
+  max_packet_size: 1048576
+  max_payload_size: 1048576
+  # Caps the keep-alive a client may request. Zero means no cap; a client
+  # asking for 65535 seconds is asking the broker to hold a dead connection's
+  # memory for eighteen hours.
+  max_keep_alive: 0
+
+auth:
+  # True is right for a broker on a trusted network, and it is stated here
+  # plainly rather than buried, so anyone deploying somewhere less trusted can
+  # see exactly what they are turning off.
+  allow_anonymous: true
+  # Populate from GOMQTT_USERS="alice:secret,bob:hunter2" rather than here.
+  users: {}

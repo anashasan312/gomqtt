@@ -1,0 +1,20 @@
+# Prometheus scrape configuration for the local GoMQTT stack.
+
+global:
+  # 5s rather than the usual 15s: a demo should show a change on the dashboard
+  # within a few seconds of publishing a message.
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: gomqtt-local
+
+scrape_configs:
+  - job_name: gomqtt
+    static_configs:
+      - targets: ["gomqtt:8080"]
+        labels:
+          service: gomqtt
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
